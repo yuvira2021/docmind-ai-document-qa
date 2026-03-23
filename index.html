@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DocMind — AI Document Q&A</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #111118;
+    --surface2: #18181f;
+    --border: rgba(255,255,255,0.07);
+    --border-hover: rgba(255,255,255,0.14);
+    --accent: #6ee7b7;
+    --accent2: #34d399;
+    --accent-dim: rgba(110,231,183,0.12);
+    --accent-dim2: rgba(110,231,183,0.06);
+    --text: #f0f0f5;
+    --text2: #8888a0;
+    --text3: #555568;
+    --danger: #f87171;
+    --danger-dim: rgba(248,113,113,0.1);
+    --amber: #fbbf24;
+    --amber-dim: rgba(251,191,36,0.1);
+    --serif: 'DM Serif Display', serif;
+    --sans: 'Instrument Sans', sans-serif;
+    --mono: 'DM Mono', monospace;
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Grid background ─────────────────────────────────── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(110,231,183,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(110,231,183,0.03) 1px, transparent 1px);
+    background-size: 48px 48px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Header ──────────────────────────────────────────── */
+  header {
+    position: relative;
+    z-index: 10;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(10,10,15,0.8);
+    backdrop-filter: blur(12px);
+  }
+
+  .logo {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+
+  .logo-mark {
+    font-family: var(--serif);
+    font-size: 22px;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+
+  .logo-mark span { color: var(--accent); font-style: italic; }
+
+  .logo-sub {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: var(--mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--text2);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 99px;
+  }
+
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text3);
+    transition: background 0.3s;
+  }
+  .dot.online { background: var(--accent); box-shadow: 0 0 6px var(--accent2); }
+  .dot.error  { background: var(--danger); }
+
+  /* ── Layout ──────────────────────────────────────────── */
+  .app {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    flex: 1;
+    height: calc(100vh - 65px);
+  }
+
+  /* ── Left panel ──────────────────────────────────────── */
+  .left-panel {
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--surface);
+  }
+
+  .panel-header {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-title {
+    font-family: var(--serif);
+    font-size: 18px;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .panel-sub {
+    font-size: 12px;
+    color: var(--text3);
+    font-family: var(--mono);
+  }
+
+  /* ── Upload zone ─────────────────────────────────────── */
+  .upload-zone {
+    margin: 20px;
+    border: 1.5px dashed var(--border-hover);
+    border-radius: var(--radius);
+    padding: 32px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: var(--accent-dim2);
+    position: relative;
+  }
+
+  .upload-zone:hover, .upload-zone.dragging {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+
+  .upload-zone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-icon {
+    width: 40px; height: 40px;
+    margin: 0 auto 12px;
+    border: 1.5px solid var(--border-hover);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface2);
+  }
+
+  .upload-icon svg { width: 20px; height: 20px; stroke: var(--accent); fill: none; stroke-width: 1.5; }
+
+  .upload-label {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .upload-hint {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: var(--mono);
+  }
+
+  /* ── Upload button ───────────────────────────────────── */
+  .btn-upload {
+    margin: 0 20px 20px;
+    padding: 11px;
+    background: var(--accent);
+    color: #0a0a0f;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-weight: 600;
+    font-family: var(--sans);
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .btn-upload:hover { background: var(--accent2); transform: translateY(-1px); }
+  .btn-upload:active { transform: translateY(0); }
+  .btn-upload:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  /* ── Session card ────────────────────────────────────── */
+  .sessions-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 20px 20px;
+  }
+
+  .sessions-label {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+  }
+
+  .session-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: var(--surface2);
+    position: relative;
+  }
+
+  .session-card:hover { border-color: var(--border-hover); background: #1e1e28; }
+  .session-card.active { border-color: var(--accent); background: var(--accent-dim); }
+
+  .session-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding-right: 28px;
+  }
+
+  .session-meta {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text3);
+  }
+
+  .session-del {
+    position: absolute;
+    top: 10px; right: 10px;
+    width: 22px; height: 22px;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    transition: all 0.15s;
+  }
+
+  .session-del:hover { background: var(--danger-dim); color: var(--danger); }
+
+  /* ── Right panel — chat ──────────────────────────────── */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  /* ── Empty state ─────────────────────────────────────── */
+  .empty-state {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 40px;
+    text-align: center;
+  }
+
+  .empty-glyph {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 64px;
+    color: var(--text3);
+    line-height: 1;
+    opacity: 0.4;
+  }
+
+  .empty-title {
+    font-family: var(--serif);
+    font-size: 22px;
+    color: var(--text2);
+  }
+
+  .empty-sub {
+    font-size: 13px;
+    color: var(--text3);
+    max-width: 320px;
+    line-height: 1.7;
+  }
+
+  /* ── Chat header ─────────────────────────────────────── */
+  .chat-header {
+    padding: 16px 28px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(10,10,15,0.6);
+    backdrop-filter: blur(8px);
+  }
+
+  .chat-doc-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .chat-doc-meta {
+    font-size: 11px;
+    font-family: var(--mono);
+    color: var(--text3);
+    margin-top: 2px;
+  }
+
+  .badge {
+    font-size: 10px;
+    font-family: var(--mono);
+    padding: 3px 10px;
+    border-radius: 99px;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+  }
+
+  /* ── Messages ────────────────────────────────────────── */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    scroll-behavior: smooth;
+  }
+
+  .messages::-webkit-scrollbar { width: 4px; }
+  .messages::-webkit-scrollbar-track { background: transparent; }
+  .messages::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 2px; }
+
+  .msg {
+    display: flex;
+    flex-direction: column;
+    max-width: 78%;
+    animation: msgIn 0.2s ease;
+  }
+
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.ai   { align-self: flex-start; align-items: flex-start; }
+
+  .msg-label {
+    font-size: 10px;
+    font-family: var(--mono);
+    color: var(--text3);
+    margin-bottom: 5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .msg-bubble {
+    padding: 13px 17px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    line-height: 1.75;
+  }
+
+  .msg.user .msg-bubble {
+    background: var(--accent-dim);
+    border: 1px solid rgba(110,231,183,0.2);
+    color: var(--text);
+    border-bottom-right-radius: 4px;
+  }
+
+  .msg.ai .msg-bubble {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg-sources {
+    margin-top: 8px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .source-tag {
+    font-size: 10px;
+    font-family: var(--mono);
+    padding: 2px 8px;
+    border-radius: 99px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text3);
+  }
+
+  /* ── Thinking indicator ──────────────────────────────── */
+  .thinking {
+    align-self: flex-start;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 17px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    border-bottom-left-radius: 4px;
+    font-size: 13px;
+    color: var(--text3);
+    font-family: var(--mono);
+  }
+
+  .thinking-dots {
+    display: flex;
+    gap: 4px;
+  }
+
+  .thinking-dots span {
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: bounce 1.2s infinite;
+  }
+
+  .thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.4; }
+    40% { transform: translateY(-5px); opacity: 1; }
+  }
+
+  /* ── Input bar ───────────────────────────────────────── */
+  .input-bar {
+    padding: 20px 28px;
+    border-top: 1px solid var(--border);
+    background: rgba(10,10,15,0.8);
+    backdrop-filter: blur(12px);
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    transition: border-color 0.2s;
+  }
+
+  .input-row:focus-within { border-color: var(--accent); }
+
+  textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-size: 14px;
+    font-family: var(--sans);
+    resize: none;
+    line-height: 1.6;
+    max-height: 140px;
+    min-height: 24px;
+  }
+
+  textarea::placeholder { color: var(--text3); }
+
+  .btn-send {
+    width: 34px; height: 34px;
+    border-radius: 8px;
+    background: var(--accent);
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+
+  .btn-send:hover { background: var(--accent2); transform: scale(1.05); }
+  .btn-send:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+  .btn-send svg { width: 16px; height: 16px; stroke: #0a0a0f; fill: none; stroke-width: 2; }
+
+  .input-hint {
+    font-size: 11px;
+    color: var(--text3);
+    font-family: var(--mono);
+    margin-top: 8px;
+    text-align: center;
+  }
+
+  /* ── Toast ───────────────────────────────────────────── */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    padding: 12px 18px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    font-family: var(--mono);
+    z-index: 999;
+    animation: toastIn 0.25s ease;
+    max-width: 340px;
+    line-height: 1.5;
+  }
+
+  @keyframes toastIn {
+    from { opacity:0; transform: translateY(10px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  .toast.success { background: var(--accent-dim); border: 1px solid var(--accent); color: var(--accent); }
+  .toast.error   { background: var(--danger-dim); border: 1px solid var(--danger); color: var(--danger); }
+  .toast.info    { background: var(--amber-dim);  border: 1px solid var(--amber);  color: var(--amber); }
+
+  /* ── Upload progress ─────────────────────────────────── */
+  .upload-progress {
+    margin: 0 20px 12px;
+    height: 2px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+    display: none;
+  }
+
+  .upload-progress.visible { display: block; }
+
+  .upload-progress-bar {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 99px;
+    animation: progressPulse 1.5s ease-in-out infinite;
+    width: 0%;
+    transition: width 0.3s;
+  }
+
+  @keyframes progressPulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.5; }
+  }
+
+  /* ── Scrollbar ───────────────────────────────────────── */
+  .sessions-list::-webkit-scrollbar { width: 3px; }
+  .sessions-list::-webkit-scrollbar-track { background: transparent; }
+  .sessions-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-mark">Doc<span>Mind</span></div>
+    <div class="logo-sub">RAG · LangChain · FAISS</div>
+  </div>
+  <div class="status-pill">
+    <div class="dot" id="status-dot"></div>
+    <span id="status-text">checking...</span>
+  </div>
+</header>
+
+<div class="app">
+  <!-- ── Left panel ── -->
+  <div class="left-panel">
+    <div class="panel-header">
+      <div class="panel-title">Documents</div>
+      <div class="panel-sub">upload · select · ask</div>
+    </div>
+
+    <div class="upload-zone" id="upload-zone">
+      <input type="file" id="file-input" accept=".pdf,.txt,.docx,.doc">
+      <div class="upload-icon">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+      </div>
+      <div class="upload-label">Drop file here or click</div>
+      <div class="upload-hint">PDF · DOCX · TXT · max 50MB</div>
+    </div>
+
+    <div class="upload-progress" id="upload-progress">
+      <div class="upload-progress-bar" id="progress-bar"></div>
+    </div>
+
+    <button class="btn-upload" id="btn-upload" disabled>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+      Select a file to upload
+    </button>
+
+    <div class="sessions-list" id="sessions-list">
+      <div class="sessions-label">Active Documents</div>
+      <div id="sessions-container" style="color:var(--text3);font-size:12px;font-family:var(--mono);text-align:center;padding:20px 0">
+        No documents yet
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Right panel ── -->
+  <div class="right-panel" id="right-panel">
+    <div class="empty-state" id="empty-state">
+      <div class="empty-glyph">?</div>
+      <div class="empty-title">Ask your documents anything</div>
+      <div class="empty-sub">Upload a PDF, Word doc, or text file on the left — then ask questions about it in plain English.</div>
+    </div>
+
+    <div id="chat-view" style="display:none;flex:1;flex-direction:column;overflow:hidden;display:none">
+      <div class="chat-header">
+        <div>
+          <div class="chat-doc-name" id="chat-doc-name">—</div>
+          <div class="chat-doc-meta" id="chat-doc-meta">—</div>
+        </div>
+        <div class="badge" id="chat-badge">ready</div>
+      </div>
+      <div class="messages" id="messages"></div>
+      <div class="input-bar">
+        <div class="input-row">
+          <textarea id="question-input" placeholder="Ask anything about this document..." rows="1"></textarea>
+          <button class="btn-send" id="btn-send" disabled>
+            <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+          </button>
+        </div>
+        <div class="input-hint">Enter to send · Shift+Enter for new line</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'https://rag-api-gateway-328140872450.us-central1.run.app';
+const API_KEY = 'mydevkey123';
+
+const headers = { 'x-api-key': API_KEY };
+const jsonHeaders = { ...headers, 'Content-Type': 'application/json' };
+
+let sessions = [];
+let activeSession = null;
+let selectedFile = null;
+
+const $ = id => document.getElementById(id);
+
+// ── Health check ──────────────────────────────────────────
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/health`, { headers });
+    const d = await r.json();
+    const ok = d.gateway === 'healthy' && d.ragService?.status === 'healthy';
+    $('status-dot').className = 'dot ' + (ok ? 'online' : 'error');
+    $('status-text').textContent = ok ? 'both servers online' : 'rag service offline';
+  } catch {
+    $('status-dot').className = 'dot error';
+    $('status-text').textContent = 'gateway offline';
+  }
+}
+
+// ── File selection ────────────────────────────────────────
+$('file-input').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  selectedFile = f;
+  $('btn-upload').textContent = '';
+  $('btn-upload').innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Upload "${f.name.length > 22 ? f.name.slice(0,22)+'…' : f.name}"`;
+  $('btn-upload').disabled = false;
+});
+
+// ── Drag & drop ───────────────────────────────────────────
+const zone = $('upload-zone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('dragging');
+  const f = e.dataTransfer.files[0];
+  if (f) {
+    selectedFile = f;
+    $('file-input').files = e.dataTransfer.files;
+    $('btn-upload').innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Upload "${f.name.length > 22 ? f.name.slice(0,22)+'…' : f.name}"`;
+    $('btn-upload').disabled = false;
+  }
+});
+
+// ── Upload ────────────────────────────────────────────────
+$('btn-upload').addEventListener('click', async () => {
+  if (!selectedFile) return;
+  $('btn-upload').disabled = true;
+  $('btn-upload').textContent = 'Uploading...';
+
+  const progress = $('upload-progress');
+  const bar = $('progress-bar');
+  progress.classList.add('visible');
+  let pct = 0;
+  const ticker = setInterval(() => {
+    pct = Math.min(pct + Math.random() * 12, 88);
+    bar.style.width = pct + '%';
+  }, 200);
+
+  try {
+    const form = new FormData();
+    form.append('file', selectedFile);
+    const r = await fetch(`${API}/api/upload`, { method: 'POST', headers, body: form });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Upload failed');
+
+    bar.style.width = '100%';
+    clearInterval(ticker);
+    setTimeout(() => { progress.classList.remove('visible'); bar.style.width = '0%'; }, 600);
+
+    sessions.push({ ...d, messages: [] });
+    renderSessions();
+    setActiveSession(d.session_id);
+    toast(`"${d.filename}" ready — ${d.chunk_count} chunks indexed`, 'success');
+
+    selectedFile = null;
+    $('file-input').value = '';
+    $('btn-upload').textContent = 'Select a file to upload';
+    $('btn-upload').innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Select a file to upload`;
+  } catch(err) {
+    clearInterval(ticker);
+    progress.classList.remove('visible');
+    toast(err.message, 'error');
+    $('btn-upload').disabled = false;
+    $('btn-upload').innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg> Retry upload`;
+  }
+});
+
+// ── Sessions ──────────────────────────────────────────────
+function renderSessions() {
+  const c = $('sessions-container');
+  if (sessions.length === 0) {
+    c.innerHTML = '<div style="color:var(--text3);font-size:12px;font-family:var(--mono);text-align:center;padding:20px 0">No documents yet</div>';
+    return;
+  }
+  c.innerHTML = sessions.map(s => `
+    <div class="session-card ${activeSession?.session_id === s.session_id ? 'active' : ''}"
+         onclick="setActiveSession('${s.session_id}')">
+      <div class="session-name">${s.filename}</div>
+      <div class="session-meta">${s.chunk_count} chunks · ${s.messages?.length || 0} messages</div>
+      <button class="session-del" onclick="deleteSession(event,'${s.session_id}')" title="Delete">×</button>
+    </div>
+  `).join('');
+}
+
+function setActiveSession(id) {
+  activeSession = sessions.find(s => s.session_id === id);
+  if (!activeSession) return;
+  renderSessions();
+  $('empty-state').style.display = 'none';
+  const cv = $('chat-view');
+  cv.style.display = 'flex';
+  cv.style.flexDirection = 'column';
+  cv.style.flex = '1';
+  cv.style.overflow = 'hidden';
+  $('chat-doc-name').textContent = activeSession.filename;
+  $('chat-doc-meta').textContent = `${activeSession.chunk_count} chunks indexed · session ${activeSession.session_id.slice(0,8)}...`;
+  $('chat-badge').textContent = 'ready';
+  $('btn-send').disabled = false;
+  renderMessages();
+}
+
+async function deleteSession(e, id) {
+  e.stopPropagation();
+  try {
+    await fetch(`${API}/api/session/${id}`, { method: 'DELETE', headers });
+    sessions = sessions.filter(s => s.session_id !== id);
+    if (activeSession?.session_id === id) {
+      activeSession = null;
+      $('empty-state').style.display = 'flex';
+      $('chat-view').style.display = 'none';
+      $('btn-send').disabled = true;
+    }
+    renderSessions();
+    toast('Document removed', 'info');
+  } catch {
+    toast('Could not delete session', 'error');
+  }
+}
+
+// ── Messaging ─────────────────────────────────────────────
+function renderMessages() {
+  const c = $('messages');
+  if (!activeSession?.messages?.length) {
+    c.innerHTML = `<div style="text-align:center;color:var(--text3);font-size:13px;font-family:var(--mono);margin-top:40px">Ask your first question about "${activeSession?.filename}"</div>`;
+    return;
+  }
+  c.innerHTML = activeSession.messages.map(m => `
+    <div class="msg ${m.role}">
+      <div class="msg-label">${m.role === 'user' ? 'you' : 'docmind'}</div>
+      <div class="msg-bubble">${m.role === 'ai' ? m.content.replace(/\n/g,'<br>') : escHtml(m.content)}</div>
+      ${m.sources?.length ? `<div class="msg-sources">${m.sources.map(s=>`<span class="source-tag">${s}</span>`).join('')}</div>` : ''}
+    </div>
+  `).join('');
+  c.scrollTop = c.scrollHeight;
+}
+
+function escHtml(t) {
+  return t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>');
+}
+
+async function sendQuestion() {
+  const input = $('question-input');
+  const q = input.value.trim();
+  if (!q || !activeSession) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  $('btn-send').disabled = true;
+
+  activeSession.messages.push({ role: 'user', content: q });
+  renderMessages();
+
+  const thinking = document.createElement('div');
+  thinking.className = 'thinking';
+  thinking.innerHTML = `<div class="thinking-dots"><span></span><span></span><span></span></div> thinking...`;
+  $('messages').appendChild(thinking);
+  $('messages').scrollTop = $('messages').scrollHeight;
+
+  try {
+    const r = await fetch(`${API}/api/query`, {
+      method: 'POST',
+      headers: jsonHeaders,
+      body: JSON.stringify({ session_id: activeSession.session_id, question: q })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || 'Query failed');
+
+    activeSession.messages.push({ role: 'ai', content: d.answer, sources: d.sources });
+  } catch(err) {
+    activeSession.messages.push({ role: 'ai', content: `Error: ${err.message}`, sources: [] });
+  }
+
+  thinking.remove();
+  renderMessages();
+  renderSessions();
+  $('btn-send').disabled = false;
+  input.focus();
+}
+
+$('btn-send').addEventListener('click', sendQuestion);
+
+$('question-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuestion(); }
+});
+
+$('question-input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 140) + 'px';
+});
+
+// ── Toast ─────────────────────────────────────────────────
+function toast(msg, type = 'info') {
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+// ── Init ──────────────────────────────────────────────────
+checkHealth();
+setInterval(checkHealth, 10000);
+</script>
+</body>
+</html>

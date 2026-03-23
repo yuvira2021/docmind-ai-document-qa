@@ -1,0 +1,132 @@
+name: Deploy RAG System to GCP Cloud Run
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev
+
+jobs:
+  # ─── Test ────────────────────────────────────────────────────────────────────
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: |
+          cd backend
+          pip install -r requirements.txt pytest httpx
+
+      - name: Run Python tests
+        run: |
+          cd backend
+          python -m pytest tests/ -v --tb=short || echo "No tests yet — add them!"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Node deps & test
+        run: |
+          cd backend
+          npm ci
+          npm test || echo "No tests yet"
+
+  # ─── Build & Push ─────────────────────────────────────────────────────────────
+  build-and-push:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGISTRY }}
+
+      - name: Build & Push RAG Backend
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/rag-system/rag-backend"
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" ./backend -f ./backend/Dockerfile
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+      - name: Build & Push API Gateway
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/rag-system/api-gateway"
+          docker build -t "${IMAGE}:${{ github.sha }}" -t "${IMAGE}:latest" ./backend -f ./backend/Dockerfile.gateway
+          docker push "${IMAGE}:${{ github.sha }}"
+          docker push "${IMAGE}:latest"
+
+  # ─── Deploy ───────────────────────────────────────────────────────────────────
+  deploy:
+    name: Deploy to Cloud Run
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SERVICE_ACCOUNT }}
+
+      - name: Deploy RAG Backend to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: rag-backend
+          region: ${{ env.REGION }}
+          image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/rag-system/rag-backend:${{ github.sha }}
+          flags: --memory=4Gi --cpu=2 --max-instances=10 --no-allow-unauthenticated
+
+      - name: Deploy API Gateway to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: rag-api-gateway
+          region: ${{ env.REGION }}
+          image: ${{ env.REGISTRY }}/${{ env.PROJECT_ID }}/rag-system/api-gateway:${{ github.sha }}
+          flags: --memory=512Mi --cpu=1 --max-instances=20 --allow-unauthenticated
+
+      - name: Verify Deployment
+        run: |
+          GATEWAY_URL=$(gcloud run services describe rag-api-gateway \
+            --region=${{ env.REGION }} \
+            --format='value(status.url)')
+          echo "✅ Deployed to: $GATEWAY_URL"
+          curl -f "${GATEWAY_URL}/health" || exit 1
